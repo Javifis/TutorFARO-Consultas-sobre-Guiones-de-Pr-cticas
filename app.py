@@ -112,6 +112,10 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
 if os.path.exists("registro_dudas.json"):
     with open("registro_dudas.json", "r", encoding="utf-8") as f:
         datos_json = f.read()
-
+st.download_button(
+        label="📥 Descargar registros (JSON)",
+        data=datos_json,
+        file_name="registro_dudas.json",
+        mime="application/json",
 
     )
