@@ -92,7 +92,7 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
     with st.chat_message("assistant"):
         try:
             response = client.models.generate_content(
-                model="gemini-1.5-flash", contents=contents, config=config
+                model="gemini-2.5-flash", contents=contents, config=config
             )
             respuesta_texto = response.text
             st.markdown(respuesta_texto)
