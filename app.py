@@ -107,7 +107,16 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
             st.error(
                 f"Error al conectar con la API de Gemini: {e}\n\nPor favor, revisa que tu GEMINI_API_KEY en los Secrets de Streamlit sea válida."
             )
+# Botón inferior para descargar el archivo de datos anonimizados
+if os.path.exists("registro_dudas.json"):
+    with open("registro_dudas.json", "r", encoding="utf-8") as f:
+        datos_json = f.read()
 
+    st.download_button(
+        label="📥 Descargar registros (JSON)",
+        data=datos_json,
+        file_name="registro_dudas.json",
+        mime="application/json",
 
 
     )
