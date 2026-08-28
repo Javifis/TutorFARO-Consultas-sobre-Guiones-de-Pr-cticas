@@ -25,28 +25,44 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 
-# 4. Función para cargar MÚLTIPLES PDF desde la carpeta 'documentos' (con caché de Streamlit)
+# 4. Función para cargar MÚLTIPLES documentos (PDF y TXT) de la carpeta 'documentos'
 @st.cache_resource
-def cargar_documentos_pdf(carpeta_pdf="documentos"):
-    archivos_procesados = []
-    patron = os.path.join(carpeta_pdf, "*.pdf")
-    lista_pdf = glob.glob(patron)
+def cargar_partes_documentos(carpeta_pdf="documentos"):
+    partes = []
 
-    if not lista_pdf:
-        return []
+    # Buscar archivos .pdf y .txt
+    archivos_pdf = glob.glob(os.path.join(carpeta_pdf, "*.pdf"))
+    archivos_txt = glob.glob(os.path.join(carpeta_pdf, "*.txt"))
 
-    for ruta in lista_pdf:
+    # Cargar archivos PDF como bytes
+    for ruta in archivos_pdf:
         try:
-            doc_subido = client.files.upload(file=ruta)
-            archivos_procesados.append(doc_subido)
+            with open(ruta, "rb") as f:
+                bytes_pdf = f.read()
+            partes.append(
+                types.Part.from_bytes(data=bytes_pdf, mime_type="application/pdf")
+            )
         except Exception as e:
-            st.error(f"Error al subir {ruta} a Gemini: {e}")
+            st.error(f"Error al leer PDF {ruta}: {e}")
 
-    return archivos_procesados
+    # Cargar archivos TXT como texto
+    for ruta in archivos_txt:
+        try:
+            with open(ruta, "r", encoding="utf-8") as f:
+                texto_txt = f.read()
+            partes.append(
+                types.Part.from_text(
+                    text=f"--- DOCUMENTO INFORMATIVO ({os.path.basename(ruta)}) ---\n{texto_txt}"
+                )
+            )
+        except Exception as e:
+            st.error(f"Error al leer TXT {ruta}: {e}")
+
+    return partes
 
 
-# Cargar los PDF de la carpeta "documentos" al iniciar la app
-documentos_contexto = cargar_documentos_pdf("documentos")
+# Cargar los documentos al iniciar la app
+partes_documentos = cargar_partes_documentos("documentos")
 
 # 5. Instrucciones del sistema (Prompt socrático)
 SYSTEM_INSTRUCTION = """
@@ -58,7 +74,7 @@ Tu objetivo es facilitar una lectura activa del material, asegurar la comprensi�
 2. Lectura Activa e Interactiva: Transforma la lectura del guion en un diálogo. Si el estudiante te hace una pregunta general, verifica primero su punto de partida preguntándole qué ha entendido del guion o cuál es su hipótesis inicial.
 3. Retroalimentación Formativa: Explica el "porqué" de los fenómenos físicos o procedimentales. Si el estudiante comete un error, ayuda a identificar la causa mediante ejemplos analógicos o contraejemplos.
 4. Adaptabilidad y Flexibilidad: Ajusta la profundidad, notación y ejemplos al ritmo y nivel demostrado por el estudiante (enseñanza diferenciada).
-5. Uso de los Guiones Adjuntos: Consulta la información, procedimientos, instrumentación y fórmulas presentes en los documentos PDF adjuntos para basar tus explicaciones y preguntas.
+5. Uso de los Guiones Adjuntos: Consulta la información, procedimientos, instrumentación y fórmulas presentes en los documentos adjuntos para basar tus explicaciones y preguntas.
 
 [INSTRUCCIONES OPERATIVAS Y REGLAS DIRECTIVAS]
 - Si un estudiante pregunta "Cómo se hace X paso del guion" o "Cuál es la fórmula para Y", responde preguntándole qué datos identifica en el guion o qué ley física cree que aplica a esa situación.
@@ -69,10 +85,6 @@ Tu objetivo es facilitar una lectura activa del material, asegurar la comprensi�
 [ESTILO Y TONO]
 - Tono: Empático, motivador, riguroso, paciente y profesional. Trata al estudiante como un investigador en formación.
 - Formato: Respuestas breves o estructuradas en listas cortas. Evita párrafos largos e ininterrumpidos para no sobrecargar cognitivamente al alumno antes de su práctica.
-
-[EJEMPLO DE INTERACCIÓN ESPERADA]
-Estudiante: "No entiendo qué tengo que medir en el paso 3 del guion de Ondas."
-TutorFARO: "¡Hola! Revisemos ese paso juntos. Antes de mirar la medida concreta, ¿qué fenómeno físico estamos intentando observar en ese montaje y qué instrumento tienes conectado al circuito? Cuéntame qué entiendes de esa parte y lo construimos desde ahí."
 """
 
 
@@ -114,19 +126,20 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
 
     guardar_registro("estudiante", prompt)
 
-    # Construir el contenido enviando los PDF cargados en el primer bloque del contexto
+    # Construir la estructura de contenidos para la API
     contents = []
 
-    if documentos_contexto:
-        partes_iniciales = list(documentos_contexto)
+    # Incluir los documentos de contexto en el primer bloque
+    if partes_documentos:
+        partes_iniciales = list(partes_documentos)
         partes_iniciales.append(
             types.Part.from_text(
-                text="Utiliza los guiones PDF anteriores como base de conocimiento de la asignatura."
+                text="Utiliza los guiones y documentos adjuntos anteriores como base de conocimiento primaria de la asignatura."
             )
         )
         contents.append(types.Content(role="user", parts=partes_iniciales))
 
-    # Añadir los mensajes del historial
+    # Añadir los mensajes de la conversación
     for m in st.session_state.messages:
         role = "user" if m["role"] == "user" else "model"
         contents.append(
@@ -185,7 +198,7 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
 # 9. Sección de administración para el profesor
 st.divider()
 
-with st.expander("🔐 Acceso Profesor"):
+with st.expander("🔐 Acceso Profesor (Descargar registros)"):
     clave_profesor = st.text_input(
         "Introduce la clave de acceso:", type="password"
     )
