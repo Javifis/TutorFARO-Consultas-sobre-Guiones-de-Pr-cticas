@@ -198,7 +198,7 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
 # 9. Sección de administración para el profesor
 st.divider()
 
-with st.expander("🔐 Acceso Profesor (Descargar registros)"):
+with st.expander("🔐 Acceso Profesor"):
     clave_profesor = st.text_input(
         "Introduce la clave de acceso:", type="password"
     )
