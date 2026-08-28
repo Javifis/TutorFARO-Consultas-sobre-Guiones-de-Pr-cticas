@@ -1,8 +1,10 @@
+import glob
 import json
 import os
 from datetime import datetime
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 import streamlit as st
 
 # 1. Configuración de la interfaz
@@ -22,7 +24,31 @@ if not api_key:
 # 3. Inicializar el cliente de Gemini
 client = genai.Client(api_key=api_key)
 
-# 4. Instrucciones del sistema (Prompt socrático)
+
+# 4. Función para cargar MÚLTIPLES PDF desde la carpeta 'documentos' (con caché de Streamlit)
+@st.cache_resource
+def cargar_documentos_pdf(carpeta_pdf="documentos"):
+    archivos_procesados = []
+    patron = os.path.join(carpeta_pdf, "*.pdf")
+    lista_pdf = glob.glob(patron)
+
+    if not lista_pdf:
+        return []
+
+    for ruta in lista_pdf:
+        try:
+            doc_subido = client.files.upload(file=ruta)
+            archivos_procesados.append(doc_subido)
+        except Exception as e:
+            st.error(f"Error al subir {ruta} a Gemini: {e}")
+
+    return archivos_procesados
+
+
+# Cargar los PDF de la carpeta "documentos" al iniciar la app
+documentos_contexto = cargar_documentos_pdf("documentos")
+
+# 5. Instrucciones del sistema (Prompt socrático)
 SYSTEM_INSTRUCTION = """
 Eres "TutorFARO", un tutor académico inteligente especializado en guiar a estudiantes universitarios de asignaturas experimentales (como Física, Ondas y Electromagnetismo) en la preparación previa de sus guiones de laboratorio.
 Tu objetivo es facilitar una lectura activa del material, asegurar la comprensión de los fundamentos teóricos y el procedimiento experimental, y resolver dudas sin dar las respuestas de forma directa.
@@ -32,6 +58,7 @@ Tu objetivo es facilitar una lectura activa del material, asegurar la comprensi�
 2. Lectura Activa e Interactiva: Transforma la lectura del guion en un diálogo. Si el estudiante te hace una pregunta general, verifica primero su punto de partida preguntándole qué ha entendido del guion o cuál es su hipótesis inicial.
 3. Retroalimentación Formativa: Explica el "porqué" de los fenómenos físicos o procedimentales. Si el estudiante comete un error, ayuda a identificar la causa mediante ejemplos analógicos o contraejemplos.
 4. Adaptabilidad y Flexibilidad: Ajusta la profundidad, notación y ejemplos al ritmo y nivel demostrado por el estudiante (enseñanza diferenciada).
+5. Uso de los Guiones Adjuntos: Consulta la información, procedimientos, instrumentación y fórmulas presentes en los documentos PDF adjuntos para basar tus explicaciones y preguntas.
 
 [INSTRUCCIONES OPERATIVAS Y REGLAS DIRECTIVAS]
 - Si un estudiante pregunta "Cómo se hace X paso del guion" o "Cuál es la fórmula para Y", responde preguntándole qué datos identifica en el guion o qué ley física cree que aplica a esa situación.
@@ -49,7 +76,7 @@ TutorFARO: "¡Hola! Revisemos ese paso juntos. Antes de mirar la medida concreta
 """
 
 
-# 5. Función para guardar los registros
+# 6. Función para guardar los registros
 def guardar_registro(rol, texto):
     registro = {
         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -69,7 +96,7 @@ def guardar_registro(rol, texto):
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
 
-# 6. Inicializar el historial de la sesión en Streamlit
+# 7. Inicializar el historial de la sesión en Streamlit
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -78,7 +105,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 7. Entrada de usuario y generación de respuesta
+# 8. Entrada de usuario y generación de respuesta
 if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
     # Mostrar y guardar el mensaje del alumno
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -87,8 +114,19 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
 
     guardar_registro("estudiante", prompt)
 
-    # Convertir el historial de Streamlit al formato nativo de Gemini
+    # Construir el contenido enviando los PDF cargados en el primer bloque del contexto
     contents = []
+
+    if documentos_contexto:
+        partes_iniciales = list(documentos_contexto)
+        partes_iniciales.append(
+            types.Part.from_text(
+                text="Utiliza los guiones PDF anteriores como base de conocimiento de la asignatura."
+            )
+        )
+        contents.append(types.Content(role="user", parts=partes_iniciales))
+
+    # Añadir los mensajes del historial
     for m in st.session_state.messages:
         role = "user" if m["role"] == "user" else "model"
         contents.append(
@@ -97,41 +135,61 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
             )
         )
 
-    # Configuración de generación usando el modelo oficial estable
+    # Configuración de generación
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM_INSTRUCTION,
         temperature=0.3,
     )
 
-    # Enviar la consulta a Gemini
+    # Generación de respuesta con manejo de errores y fallback de modelos
     with st.chat_message("assistant"):
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.6-flash", contents=contents, config=config
-            )
-            respuesta_texto = response.text
-            st.markdown(respuesta_texto)
+        respuesta_texto = None
+        modelos_disponibles = [
+            "gemini-3.6-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+        ]
 
-            # Guardar la respuesta en la sesión y en los registros
+        for mod in modelos_disponibles:
+            try:
+                response = client.models.generate_content(
+                    model=mod, contents=contents, config=config
+                )
+                respuesta_texto = response.text
+                break
+            except APIError as e:
+                if (
+                    "503" in str(e)
+                    or "UNAVAILABLE" in str(e)
+                    or "high demand" in str(e)
+                ):
+                    continue
+                else:
+                    st.error(f"Error en la API de Gemini: {e}")
+                    break
+            except Exception as e:
+                st.error(f"Error inesperado: {e}")
+                break
+
+        if respuesta_texto:
+            st.markdown(respuesta_texto)
             st.session_state.messages.append(
                 {"role": "assistant", "content": respuesta_texto}
             )
             guardar_registro("tutor", respuesta_texto)
-
-        except Exception as e:
-            st.error(
-                f"Error al conectar con la API de Gemini: {e}\n\nPor favor, revisa que tu GEMINI_API_KEY en los Secrets de Streamlit sea válida."
+        elif not respuesta_texto:
+            st.warning(
+                "⏳ El servidor tiene alta demanda en este momento. Por favor, vuelve a enviar tu duda en unos segundos."
             )
-# --- Sección de administración para el profesor ---
-st.divider()  # Línea separadora al final de la página
 
-# Un desplegable discreto para el acceso del profesor
+# 9. Sección de administración para el profesor
+st.divider()
+
 with st.expander("🔐 Acceso Profesor (Descargar registros)"):
     clave_profesor = st.text_input(
         "Introduce la clave de acceso:", type="password"
     )
 
-    # Reemplaza "MiClaveSegura2026" por la contraseña que tú elijas
     if clave_profesor == "MiClaveSegura2026":
         if os.path.exists("registro_dudas.json"):
             with open("registro_dudas.json", "r", encoding="utf-8") as f:
