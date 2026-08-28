@@ -122,15 +122,28 @@ if prompt := st.chat_input("Escribe aquí tu duda sobre el guion..."):
             st.error(
                 f"Error al conectar con la API de Gemini: {e}\n\nPor favor, revisa que tu GEMINI_API_KEY en los Secrets de Streamlit sea válida."
             )
-# Botón inferior para descargar el archivo de datos anonimizados
-# Botón inferior para descargar el archivo de datos anonimizados
-if os.path.exists("registro_dudas.json"):
-    with open("registro_dudas.json", "r", encoding="utf-8") as f:
-        datos_json = f.read()
+# --- Sección de administración para el profesor ---
+st.divider()  # Línea separadora al final de la página
 
-    st.download_button(
-        label="📥 Descargar registros (JSON)",
-        data=datos_json,
-        file_name="registro_dudas.json",
-        mime="application/json",
+# Un desplegable discreto para el acceso del profesor
+with st.expander("🔐 Acceso Profesor (Descargar registros)"):
+    clave_profesor = st.text_input(
+        "Introduce la clave de acceso:", type="password"
     )
+
+    # Reemplaza "MiClaveSegura2026" por la contraseña que tú elijas
+    if clave_profesor == "MiClaveSegura2026":
+        if os.path.exists("registro_dudas.json"):
+            with open("registro_dudas.json", "r", encoding="utf-8") as f:
+                datos_json = f.read()
+
+            st.download_button(
+                label="📥 Descargar historial anonimizado (JSON)",
+                data=datos_json,
+                file_name="registro_dudas.json",
+                mime="application/json",
+            )
+        else:
+            st.info("Aún no hay registros guardados.")
+    elif clave_profesor != "":
+        st.error("Clave incorrecta.")
