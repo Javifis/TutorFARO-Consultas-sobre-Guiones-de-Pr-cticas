@@ -203,7 +203,7 @@ with st.expander("🔐 Acceso Profesor"):
         "Introduce la clave de acceso:", type="password"
     )
 
-    if clave_profesor == "MiClaveSegura2026":
+    if clave_profesor == "1235813":
         if os.path.exists("registro_dudas.json"):
             with open("registro_dudas.json", "r", encoding="utf-8") as f:
                 datos_json = f.read()
