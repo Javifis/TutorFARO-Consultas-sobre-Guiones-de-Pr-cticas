@@ -203,18 +203,44 @@ with st.expander("🔐 Acceso Profesor"):
         "Introduce la clave de acceso:", type="password"
     )
 
-    if clave_profesor == "1235813":
-        if os.path.exists("registro_dudas.json"):
-            with open("registro_dudas.json", "r", encoding="utf-8") as f:
-                datos_json = f.read()
+    if clave_profesor == "1235813":  # Cambia esta clave por la tuya
+        st.write("### 🛠️ Panel de Control")
 
-            st.download_button(
-                label="📥 Descargar historial anonimizado (JSON)",
-                data=datos_json,
-                file_name="registro_dudas.json",
-                mime="application/json",
-            )
-        else:
-            st.info("Aún no hay registros guardados.")
+        col1, col2 = st.columns(2)
+
+        # OPCIÓN A: Descargar los registros acumulados
+        with col1:
+            if os.path.exists("registro_dudas.json"):
+                with open("registro_dudas.json", "r", encoding="utf-8") as f:
+                    datos_json = f.read()
+
+                st.download_button(
+                    label="📥 Descargar registros (JSON)",
+                    data=datos_json,
+                    file_name="registro_dudas.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
+            else:
+                st.info("No hay archivo de registro actualmente.")
+
+        # OPCIÓN B: Borrar el archivo de registros del servidor
+        with col2:
+            if st.button("🗑️ Borrar registro acumulado", use_container_width=True, type="secondary"):
+                if os.path.exists("registro_dudas.json"):
+                    os.remove("registro_dudas.json")
+                    st.success("¡El archivo de registros se ha eliminado con éxito!")
+                    st.rerun()
+                else:
+                    st.warning("El registro ya estaba vacío.")
+
+        st.divider()
+
+        # OPCIÓN C: Reiniciar el chat visible en pantalla
+        if st.button("🔄 Reiniciar pantalla de chat actual", use_container_width=True):
+            st.session_state.messages = []
+            st.success("Pantalla de conversación reiniciada.")
+            st.rerun()
+
     elif clave_profesor != "":
         st.error("Clave incorrecta.")
